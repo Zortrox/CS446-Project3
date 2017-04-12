@@ -4,6 +4,9 @@
 	- 0/1 to select a lght source
 	- J/L to move light left and right
 	- right click to select shading model
+
+	- WASD to move around
+	- mouse move to look around
 */
 
 #include <GL\glew.h>
@@ -147,7 +150,7 @@ void displayLoop(void) {
 	glEnableClientState(GL_NORMAL_ARRAY);
 	glVertexPointer(3, GL_FLOAT, 0, &objModel.buf_vertices[0]);
 	glNormalPointer(GL_FLOAT, 0, &objModel.buf_normals[0]);
-	glDrawElements(GL_QUADS, (GLsizei)objModel.buf_faces.size(), GL_UNSIGNED_INT, &objModel.buf_faces[0]);
+	glDrawElements(GL_TRIANGLES, (GLsizei)objModel.buf_faces.size(), GL_UNSIGNED_INT, &objModel.buf_faces[0]);
 
 	//===========================================================================
 	//	DRAW GUI
@@ -186,12 +189,12 @@ void resizeScreen(int width, int height) {
 
 void pressNormalKey(unsigned char key, int x, int y) {
 	switch (key) {
-	//quit when Esc key is pressed
+		//quit when Esc key is pressed
 	case 27:
 		exit(1);
 		break;
 
-	//move with WASD
+		//move with WASD
 	case 'w':
 		keyPressed[KEY_W] = true;
 		break;
@@ -203,14 +206,6 @@ void pressNormalKey(unsigned char key, int x, int y) {
 		break;
 	case 'd':
 		keyPressed[KEY_D] = true;
-		break;
-
-	//change FoV with Q & E
-	case 'q':
-		cam.changeFoV(-10);
-		break;
-	case 'e':
-		cam.changeFoV(10);
 		break;
 	}
 }
@@ -288,6 +283,8 @@ void init() {
 	if (file.is_open()) {
 		std::string line;
 
+		std::vector<GLfloat> vecFaceNormals;
+
 		//read all lines
 		while(std::getline(file, line))
 		{
@@ -310,23 +307,59 @@ void init() {
 
 			//grab all faces and store in the object's vector
 			else if (type == "f") {
-
-				GLuint v1, v2, v3;
-				ss >> v1;
-				ss >> v2;
-				ss >> v3;
+				GLuint f1, f2, f3;
+				ss >> f1;
+				ss >> f2;
+				ss >> f3;
 
 				//faces
-				objModel.buf_faces.push_back(v1 - 1);
-				objModel.buf_faces.push_back(v2 - 1);
-				objModel.buf_faces.push_back(v3 - 1);
+				objModel.buf_faces.push_back(f1 - 1);
+				objModel.buf_faces.push_back(f2 - 1);
+				objModel.buf_faces.push_back(f3 - 1);
 				
-				//TODO: generate normal vectors from vertices
+				//TODO: generate normal vector from face vertices
+
+				generateNormal(&vecFaceNormals, f1 - 1, f2 - 1, f3 - 1);
 			}
 		}
-
 		file.close();
+
+		for (int i = 0; i < objModel.buf_vertices.size() / 3; i++) {
+			std::vector<GLfloat> vecTempNormals;
+
+			for (int j = 0; j < objModel.buf_faces.size(); j++) {
+				if (objModel.buf_faces[j] == i + 1) {
+					vecTempNormals.push_back(vecFaceNormals[objModel.buf_faces[j]]);
+				}
+			}
+		}
 	}
+}
+
+void generateNormal(std::vector<GLfloat>* vecFaceNormals, GLuint f1, GLuint f2, GLuint f3) {
+	GLfloat v1a = objModel.buf_vertices[f1 * 3];
+	GLfloat v1b = objModel.buf_vertices[f1 * 3 + 1];
+	GLfloat v1c = objModel.buf_vertices[f1 * 3 + 2];
+
+	GLfloat v2a = objModel.buf_vertices[f2 * 3];
+	GLfloat v2b = objModel.buf_vertices[f2 * 3 + 1];
+	GLfloat v2c = objModel.buf_vertices[f2 * 3 + 2];
+
+	GLfloat v3a = objModel.buf_vertices[f3 * 3];
+	GLfloat v3b = objModel.buf_vertices[f3 * 3 + 1];
+	GLfloat v3c = objModel.buf_vertices[f3 * 3 + 2];
+
+	GLfloat a = v1a - v2a;
+	GLfloat b = v1b - v2b;
+	GLfloat c = v1c - v2c;
+
+	GLfloat x = v1a - v3a;
+	GLfloat y = v1b - v3b;
+	GLfloat z = v1c - v3c;
+
+	vecFaceNormals->push_back(b*z - c*y);
+	vecFaceNormals->push_back(c*x - a*z);
+	vecFaceNormals->push_back(a*y - b*x);
 }
 
 //redraw the screen @ 60 FPS
