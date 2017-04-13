@@ -12,6 +12,7 @@
 #include <GL\glew.h>
 #include <GL\freeglut.h>
 #include <vector>
+#include <list>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -141,10 +142,12 @@ void displayLoop(void) {
 	glLoadIdentity();
 
 	//draw everything in front of the camera
-	glTranslatef(0, -4, 10);
+	glTranslatef(0, 0, 10);
+	glRotatef(90, 1.0, 0.0f, 0.0f);
+	glRotatef(180, 0.0f, 0.0f, 1.0f);
 
-	//cool model
-	GLfloat color[] = { 0.51f, 0.28f, 0.22f, 1.0f };	//brown
+	//Buddha model
+	GLfloat color[] = { 1.0f, 0.843f, 0.0f, 1.0f };	//gold
 	glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, color);
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_NORMAL_ARRAY);
@@ -274,16 +277,66 @@ void mouseMove(int x, int y) {
 	cam.changeYaw(deltaYaw);
 }
 
+void generateNormal(std::vector<GLfloat>* vecFaceNormals, GLuint f1, GLuint f2, GLuint f3) {
+	GLfloat v1a = objModel.buf_vertices[f1 * 3];
+	GLfloat v1b = objModel.buf_vertices[f1 * 3 + 1];
+	GLfloat v1c = objModel.buf_vertices[f1 * 3 + 2];
+
+	GLfloat v2a = objModel.buf_vertices[f2 * 3];
+	GLfloat v2b = objModel.buf_vertices[f2 * 3 + 1];
+	GLfloat v2c = objModel.buf_vertices[f2 * 3 + 2];
+
+	GLfloat v3a = objModel.buf_vertices[f3 * 3];
+	GLfloat v3b = objModel.buf_vertices[f3 * 3 + 1];
+	GLfloat v3c = objModel.buf_vertices[f3 * 3 + 2];
+
+	GLfloat a = v2a - v1a;
+	GLfloat b = v2b - v1b;
+	GLfloat c = v2c - v1c;
+
+	GLfloat x = v3a - v1a;
+	GLfloat y = v3b - v1b;
+	GLfloat z = v3c - v1c;
+
+	vecFaceNormals->push_back(b*z - c*y);
+	vecFaceNormals->push_back(c*x - a*z);
+	vecFaceNormals->push_back(a*y - b*x);
+}
+
+std::vector<GLfloat> averageNormals(std::vector<GLfloat> vecTempNormals) {
+	std::vector<GLfloat> vecNormal;
+
+	GLfloat avgX = 0.0f;
+	GLfloat avgY = 0.0f;
+	GLfloat avgZ = 0.0f;
+
+	size_t numNormals = vecTempNormals.size() / 3;
+	for (size_t i = 0; i < numNormals; i++) {
+		avgX += vecTempNormals[i * 3];
+		avgY += vecTempNormals[i * 3 + 1];
+		avgZ += vecTempNormals[i * 3 + 2];
+	}
+
+	vecNormal.push_back(avgX / numNormals);
+	vecNormal.push_back(avgY / numNormals);
+	vecNormal.push_back(avgZ / numNormals);
+
+	return vecNormal;
+}
+
 //load object
 void init() {
 	objModel = GLObject();
 
 	//open object file
-	std::ifstream file("buddha.obj");
+	std::ifstream file("cube.obj");
 	if (file.is_open()) {
 		std::string line;
 
 		std::vector<GLfloat> vecFaceNormals;
+		std::list<GLuint> lstTempFaces;
+
+		bool first = true;
 
 		//read all lines
 		while(std::getline(file, line))
@@ -316,50 +369,73 @@ void init() {
 				objModel.buf_faces.push_back(f1 - 1);
 				objModel.buf_faces.push_back(f2 - 1);
 				objModel.buf_faces.push_back(f3 - 1);
-				
-				//TODO: generate normal vector from face vertices
 
+				lstTempFaces.push_back(f1 - 1);
+				lstTempFaces.push_back(f2 - 1);
+				lstTempFaces.push_back(f3 - 1);
+				
 				generateNormal(&vecFaceNormals, f1 - 1, f2 - 1, f3 - 1);
+				int lastPos = vecFaceNormals.size() - 1;
+
+				if (first) {
+					//resize normal vector buffer to vertex buffer
+					objModel.buf_normals.resize(objModel.buf_vertices.size());
+					first = false;
+				}
+
+				objModel.buf_normals[(f1 - 1) * 3] = vecFaceNormals[lastPos - 2];
+				objModel.buf_normals[(f1 - 1) * 3 + 1] = vecFaceNormals[lastPos - 1];
+				objModel.buf_normals[(f1 - 1) * 3 + 2] = vecFaceNormals[lastPos];
+
+				/*objModel.buf_normals[(f2 - 1) * 3] = vecFaceNormals[lastPos - 2];
+				objModel.buf_normals[(f2 - 1) * 3 + 1] = vecFaceNormals[lastPos - 1];
+				objModel.buf_normals[(f2 - 1) * 3 + 2] = vecFaceNormals[lastPos];
+
+				objModel.buf_normals[(f3 - 1) * 3] = vecFaceNormals[lastPos - 2];
+				objModel.buf_normals[(f3 - 1) * 3 + 1] = vecFaceNormals[lastPos - 1];
+				objModel.buf_normals[(f3 - 1) * 3 + 2] = vecFaceNormals[lastPos];*/
 			}
 		}
 		file.close();
 
-		for (int i = 0; i < objModel.buf_vertices.size() / 3; i++) {
-			std::vector<GLfloat> vecTempNormals;
+		//resize normal vector buffer to vertex buffer
+		//objModel.buf_normals.resize(objModel.buf_vertices.size());
 
-			for (int j = 0; j < objModel.buf_faces.size(); j++) {
-				if (objModel.buf_faces[j] == i + 1) {
-					vecTempNormals.push_back(vecFaceNormals[objModel.buf_faces[j]]);
+		//add flat normals
+		//objModel.buf_normals = vecFaceNormals;
+
+		//generate normal vector by averaging normals for all faces
+		size_t numVertices = objModel.buf_vertices.size() / 3;
+		for (size_t i = 0; i < 0/*numVertices*/; i++) {
+			std::vector<GLfloat> vecTempNormals;
+			std::vector<GLuint> vecIndices;
+
+			std::cout << i << " / " << numVertices << std::endl;
+
+			int idxFace = 0;
+			for each (GLuint face in lstTempFaces) {
+				if (face == i) {
+					vecIndices.push_back((GLuint)i * 3);
+					vecTempNormals.push_back(vecFaceNormals[i * 3]);
+					vecTempNormals.push_back(vecFaceNormals[i * 3 + 1]);
+					vecTempNormals.push_back(vecFaceNormals[i * 3 + 2]);
+
+					lstTempFaces.remove(idxFace);
 				}
+				else {
+					idxFace++;
+				}
+			}
+
+			std::vector<GLfloat> avgNormal = averageNormals(vecTempNormals);
+
+			for (int j = 0; j < vecIndices.size(); j++) {
+				objModel.buf_normals[vecIndices[j]] = avgNormal[0];
+				objModel.buf_normals[vecIndices[j] + 1] = avgNormal[1];
+				objModel.buf_normals[vecIndices[j] + 2] = avgNormal[2];
 			}
 		}
 	}
-}
-
-void generateNormal(std::vector<GLfloat>* vecFaceNormals, GLuint f1, GLuint f2, GLuint f3) {
-	GLfloat v1a = objModel.buf_vertices[f1 * 3];
-	GLfloat v1b = objModel.buf_vertices[f1 * 3 + 1];
-	GLfloat v1c = objModel.buf_vertices[f1 * 3 + 2];
-
-	GLfloat v2a = objModel.buf_vertices[f2 * 3];
-	GLfloat v2b = objModel.buf_vertices[f2 * 3 + 1];
-	GLfloat v2c = objModel.buf_vertices[f2 * 3 + 2];
-
-	GLfloat v3a = objModel.buf_vertices[f3 * 3];
-	GLfloat v3b = objModel.buf_vertices[f3 * 3 + 1];
-	GLfloat v3c = objModel.buf_vertices[f3 * 3 + 2];
-
-	GLfloat a = v1a - v2a;
-	GLfloat b = v1b - v2b;
-	GLfloat c = v1c - v2c;
-
-	GLfloat x = v1a - v3a;
-	GLfloat y = v1b - v3b;
-	GLfloat z = v1c - v3c;
-
-	vecFaceNormals->push_back(b*z - c*y);
-	vecFaceNormals->push_back(c*x - a*z);
-	vecFaceNormals->push_back(a*y - b*x);
 }
 
 //redraw the screen @ 60 FPS
@@ -409,17 +485,17 @@ int main(int argc, char* argv[]) {
 	init();
 
 	//lighting and shading
-	glShadeModel(GL_SMOOTH);
+	glShadeModel(GL_FLAT);
 	glEnable(GL_LIGHT0);
-	GLfloat light0Pos[] = { 1.0f, 0, 0, 1.0f };
+	GLfloat light0Pos[] = { 1.0f, 1.0f, 0, 0.0f };
 	GLfloat light0Amb[] = { .2f, .2f, .2f, 1 };
 	GLfloat light0Dif[] = { 1, 1, 1, 1 };
 	glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
 	glLightfv(GL_LIGHT0, GL_AMBIENT, light0Amb);
 	glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Dif);
 
-	glEnable(GL_LIGHT1);
-	GLfloat light1Pos[] = { -1.0f, 0, 0, 1.0f };
+	//glEnable(GL_LIGHT1);
+	GLfloat light1Pos[] = { -1.0f, 0, 0, 0.0f };
 	GLfloat light1Amb[] = { .2f, .2f, .2f, 1 };
 	GLfloat light1Dif[] = { 1, 1, 1, 1 };
 	glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
