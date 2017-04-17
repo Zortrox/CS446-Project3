@@ -31,6 +31,9 @@ int screenHeight = 600;
 int mouseX = screenWidth / 2;
 int mouseY = screenHeight / 2;
 
+#define OBJ_FILENAME "sphere.obj"
+int OBJ_MODEL_TYPE = GL_TRIANGLES;
+
 class Camera {
 public:
 	void look() {
@@ -142,18 +145,29 @@ void displayLoop(void) {
 	glLoadIdentity();
 
 	//draw everything in front of the camera
-	glTranslatef(0, 0, 10);
+	glTranslatef(0, 0, 3);
 	glRotatef(90, 1.0, 0.0f, 0.0f);
-	glRotatef(180, 0.0f, 0.0f, 1.0f);
+	glRotatef(180, 0.0f, 1.0f, 0.0f);
 
 	//Buddha model
-	GLfloat color[] = { 1.0f, 0.843f, 0.0f, 1.0f };	//gold
+	GLfloat color[] = { 1.0f, 0.757f, 0.098f, 1.0f };	//gold
 	glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, color);
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_NORMAL_ARRAY);
 	glVertexPointer(3, GL_FLOAT, 0, &objModel.buf_vertices[0]);
 	glNormalPointer(GL_FLOAT, 0, &objModel.buf_normals[0]);
-	glDrawElements(GL_TRIANGLES, (GLsizei)objModel.buf_faces.size(), GL_UNSIGNED_INT, &objModel.buf_faces[0]);
+	glDrawElements(OBJ_MODEL_TYPE, (GLsizei)objModel.buf_faces.size(), GL_UNSIGNED_INT, &objModel.buf_faces[0]);
+
+	for (int i = 0; i < objModel.buf_vertices.size() / 3; i++) {
+		GLfloat v1 = objModel.buf_vertices[i * 3] + objModel.buf_normals[i * 3];
+		GLfloat v2 = objModel.buf_vertices[i * 3 + 1] + objModel.buf_normals[i * 3 + 1];
+		GLfloat v3 = objModel.buf_vertices[i * 3 + 2] + objModel.buf_normals[i * 3 + 2];
+
+		glBegin(GL_LINES);
+		glVertex3f(objModel.buf_vertices[i * 3], objModel.buf_vertices[i * 3 + 1], objModel.buf_vertices[i * 3 + 2]);
+		glVertex3f(v1, v2, v3);
+		glEnd();
+	}
 
 	//===========================================================================
 	//	DRAW GUI
@@ -298,9 +312,19 @@ void generateNormal(std::vector<GLfloat>* vecFaceNormals, GLuint f1, GLuint f2, 
 	GLfloat y = v3b - v1b;
 	GLfloat z = v3c - v1c;
 
-	vecFaceNormals->push_back(b*z - c*y);
-	vecFaceNormals->push_back(c*x - a*z);
-	vecFaceNormals->push_back(a*y - b*x);
+	GLdouble v1 = b*z - c*y;
+	GLdouble v2 = c*x - a*z;
+	GLdouble v3 = a*y - b*x;
+
+	//normalize new vector
+	double len = sqrt(v1 * v1 + v2 * v2 + v3 * v3);
+	v1 = v1 / len;
+	v2 = v2 / len;
+	v3 = v3 / len;
+
+	vecFaceNormals->push_back((GLfloat)v1);
+	vecFaceNormals->push_back((GLfloat)v2);
+	vecFaceNormals->push_back((GLfloat)v3);
 }
 
 std::vector<GLfloat> averageNormals(std::vector<GLfloat> vecTempNormals) {
@@ -317,26 +341,39 @@ std::vector<GLfloat> averageNormals(std::vector<GLfloat> vecTempNormals) {
 		avgZ += vecTempNormals[i * 3 + 2];
 	}
 
-	vecNormal.push_back(avgX / numNormals);
-	vecNormal.push_back(avgY / numNormals);
-	vecNormal.push_back(avgZ / numNormals);
+	GLdouble v1 = avgX / numNormals;
+	GLdouble v2 = avgY / numNormals;
+	GLdouble v3 = avgZ / numNormals;
+
+	//normalize new vector
+	double len = sqrt(v1 * v1 + v2 * v2 + v3 * v3);
+	v1 = v1 / len;
+	v2 = v2 / len;
+	v3 = v3 / len;
+
+	vecNormal.push_back(v1);
+	vecNormal.push_back(v2);
+	vecNormal.push_back(v3);
 
 	return vecNormal;
 }
 
 //load object
-void init() {
+void loadModel() {
 	objModel = GLObject();
 
+	std::string filename = OBJ_FILENAME;
+
 	//open object file
-	std::ifstream file("cube.obj");
+	std::ifstream file(filename);
 	if (file.is_open()) {
+
+		std::cout << "Loading model: " << filename << std::endl;
+
 		std::string line;
 
 		std::vector<GLfloat> vecFaceNormals;
 		std::list<GLuint> lstTempFaces;
-
-		bool first = true;
 
 		//read all lines
 		while(std::getline(file, line))
@@ -360,79 +397,115 @@ void init() {
 
 			//grab all faces and store in the object's vector
 			else if (type == "f") {
-				GLuint f1, f2, f3;
+				GLuint f1, f2, f3, f4;
 				ss >> f1;
 				ss >> f2;
 				ss >> f3;
 
-				//faces
+				if (ss >> f4) OBJ_MODEL_TYPE = GL_QUADS;
+
+				//store faces in buffer
 				objModel.buf_faces.push_back(f1 - 1);
 				objModel.buf_faces.push_back(f2 - 1);
 				objModel.buf_faces.push_back(f3 - 1);
 
+				//store faces in temp array to make calculating
+				//average normals *slightly* faster
 				lstTempFaces.push_back(f1 - 1);
 				lstTempFaces.push_back(f2 - 1);
 				lstTempFaces.push_back(f3 - 1);
 				
+				//generate normal based on entire face
 				generateNormal(&vecFaceNormals, f1 - 1, f2 - 1, f3 - 1);
-				int lastPos = vecFaceNormals.size() - 1;
-
-				if (first) {
-					//resize normal vector buffer to vertex buffer
-					objModel.buf_normals.resize(objModel.buf_vertices.size());
-					first = false;
-				}
-
-				objModel.buf_normals[(f1 - 1) * 3] = vecFaceNormals[lastPos - 2];
-				objModel.buf_normals[(f1 - 1) * 3 + 1] = vecFaceNormals[lastPos - 1];
-				objModel.buf_normals[(f1 - 1) * 3 + 2] = vecFaceNormals[lastPos];
-
-				/*objModel.buf_normals[(f2 - 1) * 3] = vecFaceNormals[lastPos - 2];
-				objModel.buf_normals[(f2 - 1) * 3 + 1] = vecFaceNormals[lastPos - 1];
-				objModel.buf_normals[(f2 - 1) * 3 + 2] = vecFaceNormals[lastPos];
-
-				objModel.buf_normals[(f3 - 1) * 3] = vecFaceNormals[lastPos - 2];
-				objModel.buf_normals[(f3 - 1) * 3 + 1] = vecFaceNormals[lastPos - 1];
-				objModel.buf_normals[(f3 - 1) * 3 + 2] = vecFaceNormals[lastPos];*/
 			}
 		}
 		file.close();
 
-		//resize normal vector buffer to vertex buffer
-		//objModel.buf_normals.resize(objModel.buf_vertices.size());
+		std::cout << "Model loaded." << std::endl << std::endl;
 
-		//add flat normals
-		//objModel.buf_normals = vecFaceNormals;
+		std::string normalFilename = filename.substr(0, filename.find_last_of('.')) + "-normals.obj";
 
-		//generate normal vector by averaging normals for all faces
-		size_t numVertices = objModel.buf_vertices.size() / 3;
-		for (size_t i = 0; i < 0/*numVertices*/; i++) {
-			std::vector<GLfloat> vecTempNormals;
-			std::vector<GLuint> vecIndices;
+		//open object file
+		std::ifstream nTempFile(normalFilename);
+		if (nTempFile.is_open() && false) {
 
-			std::cout << i << " / " << numVertices << std::endl;
+			std::cout << "Loading normals: " << normalFilename << std::endl;
 
-			int idxFace = 0;
-			for each (GLuint face in lstTempFaces) {
-				if (face == i) {
-					vecIndices.push_back((GLuint)i * 3);
-					vecTempNormals.push_back(vecFaceNormals[i * 3]);
-					vecTempNormals.push_back(vecFaceNormals[i * 3 + 1]);
-					vecTempNormals.push_back(vecFaceNormals[i * 3 + 2]);
+			//std::vector<GLfloat> vecLoadedNormals;
 
-					lstTempFaces.remove(idxFace);
-				}
-				else {
-					idxFace++;
+			//read all lines
+			while (std::getline(nTempFile, line)) {
+				std::stringstream ss(line);
+				std::string type;
+				ss >> type;
+
+				//grab all vertices and store in the object's vector
+				if (type == "n") {
+					GLdouble n1, n2, n3;
+					ss >> n1;
+					ss >> n2;
+					ss >> n3;
+
+					//normalize to 1
+					double len = sqrt(n1 * n1 + n2 * n2 + n3 * n3);
+					n1 = n1 / len;
+					n2 = n2 / len;
+					n3 = n3 / len;
+
+					objModel.buf_normals.push_back((GLfloat)n1);
+					objModel.buf_normals.push_back((GLfloat)n2);
+					objModel.buf_normals.push_back((GLfloat)n3);
 				}
 			}
 
-			std::vector<GLfloat> avgNormal = averageNormals(vecTempNormals);
+			std::cout << "Normals loaded." << std::endl << std::endl;
 
-			for (int j = 0; j < vecIndices.size(); j++) {
-				objModel.buf_normals[vecIndices[j]] = avgNormal[0];
-				objModel.buf_normals[vecIndices[j] + 1] = avgNormal[1];
-				objModel.buf_normals[vecIndices[j] + 2] = avgNormal[2];
+			nTempFile.close();
+		}
+		else {
+			std::cout << "Calculating normal vectors for " << lstTempFaces.size() << " faces." << std::endl;
+
+			//resize normal vector buffer to vertex buffer
+			objModel.buf_normals.resize(objModel.buf_vertices.size());
+
+			//generate normal vector by averaging normals for all faces
+			size_t numVertices = objModel.buf_vertices.size() / 3;
+			for (size_t i = 0; i < numVertices; i++) {
+				std::vector<GLfloat> vecTempNormals;
+
+				int face = 0;
+				std::list<GLuint>::iterator it = lstTempFaces.begin();
+				while (it != lstTempFaces.end())
+				{
+					if (*it == i) {
+						vecTempNormals.push_back(vecFaceNormals[face % 3 * 3]);
+						vecTempNormals.push_back(vecFaceNormals[face % 3 * 3 + 1]);
+						vecTempNormals.push_back(vecFaceNormals[face % 3 * 3 + 2]);
+
+						//it = lstTempFaces.erase(it);
+					}
+					it++;
+					face++;
+				}
+
+				std::cout << "    Faces Left: " << lstTempFaces.size() << std::endl;
+
+				std::vector<GLfloat> avgNormal = averageNormals(vecTempNormals);
+
+				objModel.buf_normals[i * 3] = avgNormal[0];
+				objModel.buf_normals[i * 3 + 1] = avgNormal[1];
+				objModel.buf_normals[i * 3 + 2] = avgNormal[2];
+			}
+
+			std::ofstream nFile(normalFilename);
+			if (nFile.is_open()) {
+
+				for (int i = 0; i < objModel.buf_normals.size() / 3; i++) {
+					nFile << "n " << objModel.buf_normals[i * 3] << " " << objModel.buf_normals[i * 3 + 1]
+						<< " " << objModel.buf_normals[i * 3 + 2] << std::endl;
+				}
+
+				nFile.close();
 			}
 		}
 	}
@@ -445,6 +518,9 @@ void redraw(int) {
 }
 
 int main(int argc, char* argv[]) {
+	//initialize the 3D model
+	loadModel();
+
 	//create double-buffer display & setup
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_MULTISAMPLE);
@@ -481,11 +557,8 @@ int main(int argc, char* argv[]) {
 	glutMotionFunc(mouseMove);
 	glutPassiveMotionFunc(mouseMove);
 
-	//initialize the 3D model
-	init();
-
 	//lighting and shading
-	glShadeModel(GL_FLAT);
+	glShadeModel(GL_SMOOTH);
 	glEnable(GL_LIGHT0);
 	GLfloat light0Pos[] = { 1.0f, 1.0f, 0, 0.0f };
 	GLfloat light0Amb[] = { .2f, .2f, .2f, 1 };
