@@ -20,7 +20,7 @@
 #define PI 3.14159
 
 //move when key is held
-enum keys {KEY_W, KEY_A, KEY_S, KEY_D, KEY_MAX};
+enum keys {KEY_W, KEY_A, KEY_S, KEY_D, KEY_J, KEY_L, KEY_MAX};
 bool keyPressed[KEY_MAX] = { false };
 
 //screen width and height to modify matrices (like when resizing)
@@ -31,8 +31,12 @@ int screenHeight = 600;
 int mouseX = screenWidth / 2;
 int mouseY = screenHeight / 2;
 
-#define OBJ_FILENAME "sphere.obj"
-int OBJ_MODEL_TYPE = GL_TRIANGLES;
+bool bLight0Move = true;
+GLfloat light0Pos[] = { 1.0f, 0.0f, 0, 1.0f };
+GLfloat light1Pos[] = { -1.0f, 0.0f, 0, 1.0f };
+
+#define OBJ_FILENAME "buddha.obj"
+#define	DISPLAY_NORMALS false
 
 class Camera {
 public:
@@ -132,6 +136,29 @@ void displayLoop(void) {
 	glEnable(GL_CULL_FACE);
 	glEnable(GL_LIGHTING);
 
+	//Move lights
+	GLfloat moveAmount = 0.1f;
+	if (keyPressed[KEY_J]) {
+		if (bLight0Move) {
+			light0Pos[0] -= moveAmount;
+			glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
+		}
+		else {
+			light1Pos[0] -= moveAmount;
+			glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
+		}
+	}
+	if (keyPressed[KEY_L]) {
+		if (bLight0Move) {
+			light0Pos[0] += moveAmount;
+			glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
+		}
+		else {
+			light1Pos[0] += moveAmount;
+			glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
+		}
+	}
+
 	//===========================================================================
 	//	DRAW MODEL
 	//===========================================================================
@@ -156,17 +183,19 @@ void displayLoop(void) {
 	glEnableClientState(GL_NORMAL_ARRAY);
 	glVertexPointer(3, GL_FLOAT, 0, &objModel.buf_vertices[0]);
 	glNormalPointer(GL_FLOAT, 0, &objModel.buf_normals[0]);
-	glDrawElements(OBJ_MODEL_TYPE, (GLsizei)objModel.buf_faces.size(), GL_UNSIGNED_INT, &objModel.buf_faces[0]);
+	glDrawElements(GL_TRIANGLES, (GLsizei)objModel.buf_faces.size(), GL_UNSIGNED_INT, &objModel.buf_faces[0]);
 
-	for (int i = 0; i < objModel.buf_vertices.size() / 3; i++) {
-		GLfloat v1 = objModel.buf_vertices[i * 3] + objModel.buf_normals[i * 3];
-		GLfloat v2 = objModel.buf_vertices[i * 3 + 1] + objModel.buf_normals[i * 3 + 1];
-		GLfloat v3 = objModel.buf_vertices[i * 3 + 2] + objModel.buf_normals[i * 3 + 2];
+	if (DISPLAY_NORMALS) {
+		for (int i = 0; i < objModel.buf_vertices.size() / 3; i++) {
+			GLfloat v1 = objModel.buf_vertices[i * 3] + objModel.buf_normals[i * 3];
+			GLfloat v2 = objModel.buf_vertices[i * 3 + 1] + objModel.buf_normals[i * 3 + 1];
+			GLfloat v3 = objModel.buf_vertices[i * 3 + 2] + objModel.buf_normals[i * 3 + 2];
 
-		glBegin(GL_LINES);
-		glVertex3f(objModel.buf_vertices[i * 3], objModel.buf_vertices[i * 3 + 1], objModel.buf_vertices[i * 3 + 2]);
-		glVertex3f(v1, v2, v3);
-		glEnd();
+			glBegin(GL_LINES);
+			glVertex3f(objModel.buf_vertices[i * 3], objModel.buf_vertices[i * 3 + 1], objModel.buf_vertices[i * 3 + 2]);
+			glVertex3f(v1, v2, v3);
+			glEnd();
+		}
 	}
 
 	//===========================================================================
@@ -205,6 +234,8 @@ void resizeScreen(int width, int height) {
 }
 
 void pressNormalKey(unsigned char key, int x, int y) {
+	std::cout << key << std::endl;
+
 	switch (key) {
 		//quit when Esc key is pressed
 	case 27:
@@ -224,12 +255,29 @@ void pressNormalKey(unsigned char key, int x, int y) {
 	case 'd':
 		keyPressed[KEY_D] = true;
 		break;
+		
+	//select which light
+	case '0':
+		bLight0Move = true;
+		break;
+	case '1':
+		bLight0Move = false;
+		break;
+
+	//move the selected light
+	case 'j':
+		keyPressed[KEY_J] = true;
+		break;
+	case 'l':
+		keyPressed[KEY_L] = true;
+		break;
 	}
 }
 
 //when a key is released
 void releaseNormalKey(unsigned char key, int x, int y) {
 	switch (key) {
+	//move the camera
 	case 'w':
 		keyPressed[KEY_W] = false;
 		break;
@@ -241,6 +289,14 @@ void releaseNormalKey(unsigned char key, int x, int y) {
 		break;
 	case 'd':
 		keyPressed[KEY_D] = false;
+		break;
+
+	//move the selected light
+	case 'j':
+		keyPressed[KEY_J] = false;
+		break;
+	case 'l':
+		keyPressed[KEY_L] = false;
 		break;
 	}
 }
@@ -351,9 +407,9 @@ std::vector<GLfloat> averageNormals(std::vector<GLfloat> vecTempNormals) {
 	v2 = v2 / len;
 	v3 = v3 / len;
 
-	vecNormal.push_back(v1);
-	vecNormal.push_back(v2);
-	vecNormal.push_back(v3);
+	vecNormal.push_back((GLfloat)v1);
+	vecNormal.push_back((GLfloat)v2);
+	vecNormal.push_back((GLfloat)v3);
 
 	return vecNormal;
 }
@@ -373,7 +429,6 @@ void loadModel() {
 		std::string line;
 
 		std::vector<GLfloat> vecFaceNormals;
-		std::list<GLuint> lstTempFaces;
 
 		//read all lines
 		while(std::getline(file, line))
@@ -397,23 +452,15 @@ void loadModel() {
 
 			//grab all faces and store in the object's vector
 			else if (type == "f") {
-				GLuint f1, f2, f3, f4;
+				GLuint f1, f2, f3;
 				ss >> f1;
 				ss >> f2;
 				ss >> f3;
-
-				if (ss >> f4) OBJ_MODEL_TYPE = GL_QUADS;
 
 				//store faces in buffer
 				objModel.buf_faces.push_back(f1 - 1);
 				objModel.buf_faces.push_back(f2 - 1);
 				objModel.buf_faces.push_back(f3 - 1);
-
-				//store faces in temp array to make calculating
-				//average normals *slightly* faster
-				lstTempFaces.push_back(f1 - 1);
-				lstTempFaces.push_back(f2 - 1);
-				lstTempFaces.push_back(f3 - 1);
 				
 				//generate normal based on entire face
 				generateNormal(&vecFaceNormals, f1 - 1, f2 - 1, f3 - 1);
@@ -427,7 +474,7 @@ void loadModel() {
 
 		//open object file
 		std::ifstream nTempFile(normalFilename);
-		if (nTempFile.is_open() && false) {
+		if (nTempFile.is_open()) {
 
 			std::cout << "Loading normals: " << normalFilename << std::endl;
 
@@ -463,32 +510,29 @@ void loadModel() {
 			nTempFile.close();
 		}
 		else {
-			std::cout << "Calculating normal vectors for " << lstTempFaces.size() << " faces." << std::endl;
-
 			//resize normal vector buffer to vertex buffer
 			objModel.buf_normals.resize(objModel.buf_vertices.size());
 
 			//generate normal vector by averaging normals for all faces
 			size_t numVertices = objModel.buf_vertices.size() / 3;
+			std::cout << "Calculating normal vectors for " << numVertices << " vertices." << std::endl;
+
 			for (size_t i = 0; i < numVertices; i++) {
+				std::cout << i << "/" << numVertices << std::endl;
+
 				std::vector<GLfloat> vecTempNormals;
 
-				int face = 0;
-				std::list<GLuint>::iterator it = lstTempFaces.begin();
-				while (it != lstTempFaces.end())
+				size_t faces = objModel.buf_faces.size();
+				for (size_t j = 0; j < faces; j++)
 				{
-					if (*it == i) {
-						vecTempNormals.push_back(vecFaceNormals[face % 3 * 3]);
-						vecTempNormals.push_back(vecFaceNormals[face % 3 * 3 + 1]);
-						vecTempNormals.push_back(vecFaceNormals[face % 3 * 3 + 2]);
-
-						//it = lstTempFaces.erase(it);
+					if (objModel.buf_faces[j] == i) {
+						//calculate face since integer math rounds down
+						size_t face = j / 3;
+						vecTempNormals.push_back(vecFaceNormals[face * 3]);
+						vecTempNormals.push_back(vecFaceNormals[face * 3 + 1]);
+						vecTempNormals.push_back(vecFaceNormals[face * 3 + 2]);
 					}
-					it++;
-					face++;
 				}
-
-				std::cout << "    Faces Left: " << lstTempFaces.size() << std::endl;
 
 				std::vector<GLfloat> avgNormal = averageNormals(vecTempNormals);
 
@@ -509,6 +553,32 @@ void loadModel() {
 			}
 		}
 	}
+}
+
+//determine function by menu item click
+void menu(int item) {
+	switch (item) {
+	case 1:
+		//flat shading
+		glShadeModel(GL_FLAT);
+		break;
+	case 2:
+		//smooth shading
+		glShadeModel(GL_SMOOTH);
+		break;
+	default:
+		std::cout << "menu number " << item << " pressed" << std::endl;
+		break;
+	}
+}
+
+//create the popup menu that shows on right click
+void createMenu() {
+	int popup = glutCreateMenu(menu);
+	glutAddMenuEntry("Flat Shading", 1);
+	glutAddMenuEntry("Smooth Shading", 2);
+
+	glutAttachMenu(GLUT_RIGHT_BUTTON);
 }
 
 //redraw the screen @ 60 FPS
@@ -544,6 +614,9 @@ int main(int argc, char* argv[]) {
 	//ignore repeated key holding
 	glutIgnoreKeyRepeat(true);
 
+	//create menu
+	createMenu();
+
 	//handle keyboard
 	//glutSpecialFunc(pressKey);
 	//glutSpecialUpFunc(releaseKey);
@@ -560,15 +633,13 @@ int main(int argc, char* argv[]) {
 	//lighting and shading
 	glShadeModel(GL_SMOOTH);
 	glEnable(GL_LIGHT0);
-	GLfloat light0Pos[] = { 1.0f, 1.0f, 0, 0.0f };
 	GLfloat light0Amb[] = { .2f, .2f, .2f, 1 };
 	GLfloat light0Dif[] = { 1, 1, 1, 1 };
 	glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
 	glLightfv(GL_LIGHT0, GL_AMBIENT, light0Amb);
 	glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Dif);
 
-	//glEnable(GL_LIGHT1);
-	GLfloat light1Pos[] = { -1.0f, 0, 0, 0.0f };
+	glEnable(GL_LIGHT1);
 	GLfloat light1Amb[] = { .2f, .2f, .2f, 1 };
 	GLfloat light1Dif[] = { 1, 1, 1, 1 };
 	glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
